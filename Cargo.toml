@@ -1,0 +1,26 @@
+[package]
+name = "duckbridge-extension"
+version = "0.1.0"
+edition = "2021"
+description = "DuckBridge as a DuckDB extension: import SQL Server databases, run T-SQL on DuckDB, export back as a live load, a restorable .bak, PostgreSQL or Parquet"
+license = "MIT"
+repository = "https://github.com/singhpratech/duckbridge-extension"
+publish = false
+
+# The shared library must be named after the extension: DuckDB derives the entry point
+# (duckbridge_init_c_api) from the file name.
+[lib]
+name = "duckbridge"
+crate-type = ["cdylib"]
+
+[dependencies]
+duckdb = { version = "1.10506", default-features = false, features = ["loadable-extension", "vscalar", "chrono", "uuid", "serde_json"] }
+# The engine. src/lib.rs is a copy of extension/src/lib.rs at this same revision (scripts/sync-from-core.sh).
+duckbridge = { git = "https://github.com/singhpratech/duckbridge", rev = "3219cc7030512d6104d9205dd9607f10b9faa61c", default-features = false }
+anyhow = "1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+strip = true

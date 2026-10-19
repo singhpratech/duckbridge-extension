@@ -1,0 +1,3 @@
+# Static C runtime on Windows so the extension has no vcruntime dependency
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-Ctarget-feature=+crt-static"]

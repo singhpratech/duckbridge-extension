@@ -1,0 +1,36 @@
+#
+# Builds and tests the extension for every DuckDB platform with DuckDB's own extension toolchain,
+# exactly as the community-extensions repository does.
+#
+name: Main Extension Distribution Pipeline
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.head_ref || '' }}-${{ github.base_ref || '' }}-${{ github.ref != 'refs/heads/main' || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  source-in-sync:
+    name: src/lib.rs matches singhpratech/duckbridge at the pinned revision
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          REV=$(sed -n 's/.*github.com\/singhpratech\/duckbridge".*rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml)
+          curl -sSfL "https://raw.githubusercontent.com/singhpratech/duckbridge/$REV/extension/src/lib.rs" -o /tmp/core_lib.rs
+          diff -u /tmp/core_lib.rs src/lib.rs && echo "in sync with duckbridge@$REV"
+
+  duckdb-stable-build:
+    name: Build extension binaries
+    uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@v1.5.6
+    with:
+      duckdb_version: v1.5.6
+      ci_tools_version: v1.5.6
+      extension_name: duckbridge
+      extra_toolchains: rust;python3
+      # No WebAssembly (needs sockets and threads), no MinGW/RTools (MSVC build), no musl (TLS stack).
+      exclude_archs: 'wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw;windows_amd64_rtools;linux_amd64_musl'

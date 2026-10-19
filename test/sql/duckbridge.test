@@ -1,0 +1,57 @@
+# name: test/sql/duckbridge.test
+# description: DuckBridge extension: SQL translation, prelude and bridge_run (no network needed)
+# group: [duckbridge]
+
+# Before the extension is loaded the functions do not exist
+statement error
+SELECT bridge_transpile('tsql', 'duckdb', 'SELECT 1');
+----
+Catalog Error
+
+require duckbridge
+
+# T-SQL -> DuckDB SQL
+query I
+SELECT bridge_transpile('tsql', 'duckdb', 'SELECT TOP 2 ISNULL(a, 0) FROM dbo.t');
+----
+SELECT COALESCE(a, 0) FROM main.t LIMIT 2;
+
+# DuckDB SQL -> T-SQL for SQL Server 2019 (no GREATEST) and 2022 (native GREATEST)
+query I
+SELECT bridge_transpile('duckdb', 'tsql', 'SELECT greatest(a, b) FROM t', 2019);
+----
+SELECT (SELECT MAX(v) FROM (VALUES (a), (b)) AS g(v)) FROM t;
+
+query I
+SELECT bridge_transpile('duckdb', 'tsql', 'SELECT greatest(a, b) FROM t', 2022);
+----
+SELECT greatest(a, b) FROM t;
+
+# The SQL Server compatibility prelude is four SET statements
+query I
+SELECT length(string_split(bridge_prelude(true), chr(10)));
+----
+4
+
+# Unknown dialects are rejected
+statement error
+SELECT bridge_transpile('oracle', 'duckdb', 'SELECT 1');
+----
+unknown source dialect
+
+# bridge_run executes translated T-SQL against this database through the extension's connection pool
+query I
+SELECT count(*) FROM bridge_run('SELECT 7 / 2 AS half, ISNULL(NULL, ''x'') AS s INTO dbo.kpi;') WHERE kind IN ('ok', 'summary');
+----
+2
+
+query II
+SELECT half, s FROM kpi;
+----
+3	x
+
+# The prelude settings apply to the extension's session only
+query I
+SELECT current_setting('integer_division');
+----
+false
