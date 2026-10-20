@@ -27,11 +27,11 @@ SELECT bridge_transpile('duckdb', 'tsql', 'SELECT greatest(a, b) FROM t', 2022);
 ----
 SELECT greatest(a, b) FROM t;
 
-# The SQL Server compatibility prelude is four SET statements
+# The SQL Server compatibility prelude (nocase rewrite mode) is three SET statements
 query I
 SELECT length(string_split(bridge_prelude(true), chr(10)));
 ----
-4
+3
 
 # Unknown dialects are rejected
 statement error
