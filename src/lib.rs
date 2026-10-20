@@ -42,6 +42,8 @@ const VECTOR_SIZE: usize = 2048;
 /// one (and worker threads borrow more through the core's connection provider), so nothing here
 /// touches the caller's own transaction.
 const POOL_SIZE: usize = 64;
+/// bulk_load uses a second pooled connection per worker, so parallel is capped at half the pool.
+const MAX_PARALLEL: usize = POOL_SIZE / 2;
 static POOL: Mutex<Vec<Connection>> = Mutex::new(Vec::new());
 
 struct Pool;
@@ -145,6 +147,18 @@ impl VTab for ImportVTab {
             schema_only: b_param(bind, "schema_only", false),
             keys_after_load: b_param(bind, "keys_after_load", false),
             overwrite: b_param(bind, "overwrite", false),
+            isolation: s_param(bind, "isolation").unwrap_or(d.isolation),
+            lock_timeout_ms: i_param(bind, "lock_timeout", d.lock_timeout_ms),
+            lock_check: b_param(bind, "lock_check", true),
+            lock_wait_s: i_param(bind, "lock_wait", d.lock_wait_s as i64).max(0) as u64,
+            on_lock: s_param(bind, "on_lock").unwrap_or(d.on_lock),
+            max_rereads: i_param(bind, "max_rereads", d.max_rereads as i64).max(0) as u32,
+            manifest: s_param(bind, "manifest"),
+            readonly: b_param(bind, "readonly", false),
+            wait_for: s_param(bind, "wait_for"),
+            wait_timeout_s: i_param(bind, "wait_timeout", d.wait_timeout_s as i64).max(0) as u64,
+            log_file: s_param(bind, "log_file"),
+            summary_file: s_param(bind, "summary_file"),
         };
         Ok(ImportBind { dsn: bind.get_parameter(0).to_string(), req })
     }
@@ -167,6 +181,9 @@ impl VTab for ImportVTab {
             ("tables", varchar()), ("exclude", varchar()), ("parallel", bigint()), ("split_threshold", bigint()),
             ("batch_rows", bigint()), ("schema_map", varchar()), ("nolock", boolean()), ("schema_only", boolean()),
             ("keys_after_load", boolean()), ("overwrite", boolean()),
+            ("isolation", varchar()), ("lock_timeout", bigint()), ("lock_check", boolean()), ("lock_wait", bigint()), ("on_lock", varchar()),
+            ("max_rereads", bigint()), ("manifest", varchar()), ("readonly", boolean()), ("wait_for", varchar()), ("wait_timeout", bigint()),
+            ("log_file", varchar()), ("summary_file", varchar()),
         ])
     }
 }
@@ -188,11 +205,13 @@ impl VTab for ExportVTab {
             tables: s_param(bind, "tables").map(|s| api::csv_list(&s)).unwrap_or_default(),
             exclude: s_param(bind, "exclude").map(|s| api::csv_list(&s)).unwrap_or_default(),
             schema_map: s_param(bind, "schema_map").unwrap_or_default(),
-            parallel: i_param(bind, "parallel", 0).max(0) as usize,
+            parallel: (i_param(bind, "parallel", 0).max(0) as usize).clamp(0, MAX_PARALLEL).max(if i_param(bind, "parallel", 0) == 0 { 0 } else { 1 }),
             drop_existing: b_param(bind, "drop_existing", false),
             schema_only: b_param(bind, "schema_only", false),
             target_version: i_param(bind, "target_version", 2019) as u16,
             string_mode: s_param(bind, "string_mode").unwrap_or(d.string_mode),
+            string_type: s_param(bind, "string_type").unwrap_or(d.string_type),
+            string_sizes: s_param(bind, "string_sizes").unwrap_or(d.string_sizes),
             method: s_param(bind, "method").unwrap_or(d.method),
             pk_inline: b_param(bind, "pk_inline", false),
             order_by_key: b_param(bind, "order_by_key", false),
@@ -201,6 +220,27 @@ impl VTab for ExportVTab {
             create_database: b_param(bind, "create_database", false),
             parquet_compression: s_param(bind, "parquet_compression").unwrap_or(d.parquet_compression),
             source_label: "duckdb".into(),
+            disposable_db_pattern: s_param(bind, "disposable_db_pattern"),
+            compat_level: bind.get_named_parameter("compat_level").map(|_| i_param(bind, "compat_level", 0) as u16),
+            recovery: s_param(bind, "recovery"),
+            plan: b_param(bind, "plan", false),
+            log_file: s_param(bind, "log_file"),
+            summary_file: s_param(bind, "summary_file"),
+            progress_seconds: d.progress_seconds,
+            into_existing: b_param(bind, "into_existing", false),
+            ignore_extra_columns: b_param(bind, "ignore_extra_columns", false),
+            allow_rescale: b_param(bind, "allow_rescale", false),
+            check_only: b_param(bind, "check_only", false),
+            check_pk: s_param(bind, "check_pk").unwrap_or_default(),
+            splits: s_param(bind, "split").unwrap_or_default(),
+            strategies: s_param(bind, "strategy").unwrap_or_default(),
+            max_jobs_per_table: i_param(bind, "max_jobs_per_table", 0).max(0) as usize,
+            state_dir: s_param(bind, "state_dir"),
+            replace_partitions: b_param(bind, "replace_partitions", false),
+            drop_old: b_param(bind, "drop_old", false),
+            verify: s_param(bind, "verify").unwrap_or(d.verify),
+            sample: i_param(bind, "sample", d.sample as i64).max(0) as usize,
+            source_parquet: s_param(bind, "source_parquet").unwrap_or_default(),
         };
         let bd = api::BakRequest::default();
         let wants_bak = bind.get_named_parameter("bak").is_some() || b_param(bind, "verify_restore", false) || s_param(bind, "backup_to_url").is_some();
@@ -245,6 +285,11 @@ impl VTab for ExportVTab {
             ("parallel", bigint()), ("drop_existing", boolean()), ("schema_only", boolean()), ("target_version", bigint()),
             ("string_mode", varchar()), ("method", varchar()), ("pk_inline", boolean()), ("order_by_key", boolean()),
             ("split_threshold", bigint()), ("batch_rows", bigint()), ("create_database", boolean()),
+            ("disposable_db_pattern", varchar()), ("compat_level", bigint()), ("recovery", varchar()),
+            ("plan", boolean()), ("log_file", varchar()), ("summary_file", varchar()), ("string_type", varchar()), ("string_sizes", varchar()),
+            ("into_existing", boolean()), ("ignore_extra_columns", boolean()), ("allow_rescale", boolean()), ("check_only", boolean()), ("check_pk", varchar()),
+            ("split", varchar()), ("strategy", varchar()), ("max_jobs_per_table", bigint()), ("state_dir", varchar()), ("replace_partitions", boolean()), ("drop_old", boolean()),
+            ("verify", varchar()), ("sample", bigint()), ("source_parquet", varchar()),
             ("parquet_compression", varchar()),
             ("bak", varchar()), ("backup_dir", varchar()), ("fetch_via", varchar()), ("stripes", bigint()),
             ("compression", boolean()), ("verify_restore", boolean()), ("drop_staging", boolean()), ("backup_to_url", varchar()),
@@ -254,7 +299,7 @@ impl VTab for ExportVTab {
 
 // ------------------------------------------------------------------ bridge_run
 
-pub struct RunBind { sql: String, from: Dialect, nocase: bool, schema_map: String, continue_on_error: bool }
+pub struct RunBind { sql: String, req: api::RunRequest }
 struct RunVTab;
 
 impl VTab for RunVTab {
@@ -265,12 +310,19 @@ impl VTab for RunVTab {
         add_result_columns(bind);
         let from_s = s_param(bind, "from").unwrap_or_else(|| "tsql".into());
         let from = Dialect::parse(&from_s).ok_or_else(|| format!("unknown dialect {from_s:?} (tsql, duckdb, postgres)"))?;
+        // nocase := true/false keeps working (rewrite / off); nocase_mode := 'global' | 'rewrite' | 'off' is explicit
+        let nocase = s_param(bind, "nocase_mode").unwrap_or_else(|| if b_param(bind, "nocase", true) { "rewrite".into() } else { "off".into() });
         Ok(RunBind {
             sql: bind.get_parameter(0).to_string(),
-            from,
-            nocase: b_param(bind, "nocase", true),
-            schema_map: s_param(bind, "schema_map").unwrap_or_default(),
-            continue_on_error: b_param(bind, "continue_on_error", false),
+            req: api::RunRequest {
+                from,
+                nocase,
+                strict: b_param(bind, "strict", false),
+                mssql_math: b_param(bind, "mssql_math", false),
+                types: s_param(bind, "types").unwrap_or_default(),
+                schema_map: s_param(bind, "schema_map").unwrap_or_default(),
+                continue_on_error: b_param(bind, "continue_on_error", false),
+            },
         })
     }
 
@@ -280,7 +332,7 @@ impl VTab for RunVTab {
         let b = func.get_bind_data();
         func.get_init_data().emit(output, || {
             let con = connect()?;
-            let r = api::run_script(&con, &b.sql, b.from, b.nocase, &b.schema_map, b.continue_on_error);
+            let r = api::run_script(&con, &b.sql, &b.req);
             let _ = con.execute_batch("RESET integer_division; RESET default_null_order; RESET TimeZone; RESET default_collation;");
             r
         })
@@ -289,7 +341,7 @@ impl VTab for RunVTab {
     fn parameters() -> Option<Vec<LogicalTypeHandle>> { Some(vec![varchar()]) }
 
     fn named_parameters() -> Option<Vec<(String, LogicalTypeHandle)>> {
-        named(&[("from", varchar()), ("nocase", boolean()), ("schema_map", varchar()), ("continue_on_error", boolean())])
+        named(&[("from", varchar()), ("nocase", boolean()), ("nocase_mode", varchar()), ("strict", boolean()), ("mssql_math", boolean()), ("types", varchar()), ("schema_map", varchar()), ("continue_on_error", boolean())])
     }
 }
 
@@ -324,7 +376,7 @@ impl VScalar for TranspileScalar {
             let dst = Dialect::parse(t).ok_or_else(|| format!("unknown target dialect {t:?}"))?;
             let default: &[(&str, &str)] = match (src, dst) { (Dialect::Tsql, _) => &[("dbo", "main")], (_, Dialect::Tsql) => &[("main", "dbo")], _ => &[("main", "public")] };
             let sm = api::parse_schema_map("", default);
-            let opts = transpile::Options { target_version: version[i].unwrap_or(2019) as u16, prelude: false, nocase: true, float_division: true };
+            let opts = transpile::Options { target_version: version[i].unwrap_or(2019) as u16, prelude: false, float_division: true, ..transpile::Options::default() };
             let tr = transpile::translate_with(s, src, dst, &sm, &opts)?;
             let text = if tr.warnings.is_empty() { tr.sql } else {
                 let mut w: String = tr.warnings.iter().map(|w| format!("-- WARNING: {w}\n")).collect();
@@ -357,7 +409,7 @@ impl VScalar for PreludeScalar {
         let out = output.flat_vector();
         for i in 0..n {
             let nocase = if v.row_is_null(i as u64) { true } else { vals[i] };
-            let text = transpile::duckdb_prelude(nocase).iter().map(|p| p.trim().trim_end_matches(';').to_string() + ";").collect::<Vec<_>>().join("\n");
+            let text = transpile::duckdb_prelude_for(if nocase { transpile::NocaseMode::Rewrite } else { transpile::NocaseMode::Off }).iter().map(|p| p.trim().trim_end_matches(';').to_string() + ";").collect::<Vec<_>>().join("\n");
             out.insert(i, text.as_str());
         }
         Ok(())
