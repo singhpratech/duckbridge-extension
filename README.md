@@ -36,8 +36,8 @@ make release             # -> build/release/extension/duckbridge/duckbridge.duck
 make test_release        # test/sql/*.test
 ```
 
-The extension uses duckdb-rs, which needs DuckDB's unstable C API, so each build is pinned to one
-DuckDB release (`TARGET_DUCKDB_VERSION` in the Makefile, `v1.5.6` today). Prebuilt binaries for
+The extension uses duckdb-rs on DuckDB's stable v1 C API (`TARGET_DUCKDB_VERSION=v1.5.6` in the
+Makefile is the API floor), so one binary loads on DuckDB 1.5.6 and on DuckDB 2.x. Prebuilt binaries for
 Linux, macOS and Windows are attached to the main repository's
 [releases](https://github.com/singhpratech/duckbridge/releases) as
 `duckbridge-<platform>.duckdb_extension.zip`; load them with `duckdb -unsigned`.

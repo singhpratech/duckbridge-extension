@@ -4,10 +4,14 @@ PROJ_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
 EXTENSION_NAME=duckbridge
 
-# duckdb-rs needs the unstable C API: binaries work only on TARGET_DUCKDB_VERSION.
-USE_UNSTABLE_C_API=1
+# Stable v1 C API (footer C_STRUCT, floor TARGET_DUCKDB_VERSION): one binary loads on DuckDB 1.5.6
+# and on DuckDB 2.x, whose loader still serves the v1 API table that was stabilized in 1.5.6. The
+# unstable footer (USE_UNSTABLE_C_API=1) pins a binary to exactly one DuckDB version, which is what
+# kept 0.1.1 from loading on DuckDB 2.0 in the community registry.
+USE_UNSTABLE_C_API=0
 
-# Target DuckDB version (keep in sync with the duckdb crate version in Cargo.toml: 1.5.6 <-> 1.10506.x)
+# The v1 C API table the extension asks for (DUCKDB_EXTENSION_MIN_DUCKDB_VERSION) and the footer floor.
+# Keep in sync with the duckdb crate version in Cargo.toml: 1.5.6 <-> 1.10506.x.
 TARGET_DUCKDB_VERSION=v1.5.6
 
 all: configure debug
