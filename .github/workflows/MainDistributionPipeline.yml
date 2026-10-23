@@ -15,14 +15,16 @@ concurrency:
 
 jobs:
   source-in-sync:
-    name: src/lib.rs matches singhpratech/duckbridge at the pinned revision
+    name: src/ matches singhpratech/duckbridge at the pinned revision
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: |
           REV=$(sed -n 's/.*github.com\/singhpratech\/duckbridge".*rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml)
-          curl -sSfL "https://raw.githubusercontent.com/singhpratech/duckbridge/$REV/extension/src/lib.rs" -o /tmp/core_lib.rs
-          diff -u /tmp/core_lib.rs src/lib.rs && echo "in sync with duckbridge@$REV"
+          for f in lib.rs duckdb_v1.rs duckdb_neo.rs; do
+            curl -sSfL "https://raw.githubusercontent.com/singhpratech/duckbridge/$REV/extension/src/$f" -o "/tmp/core_$f"
+            diff -u "/tmp/core_$f" "src/$f"
+          done && echo "in sync with duckbridge@$REV"
 
   duckdb-stable-build:
     name: Build extension binaries

@@ -961,8 +961,8 @@ dependencies = [
 
 [[package]]
 name = "duckbridge"
-version = "0.1.1"
-source = "git+https://github.com/singhpratech/duckbridge?rev=c97cfcdaf3a1d2f00bd97e41b45283cabb70eb50#c97cfcdaf3a1d2f00bd97e41b45283cabb70eb50"
+version = "0.1.2"
+source = "git+https://github.com/singhpratech/duckbridge?rev=adf3b4f1b0b746680d83bd3a8730e438d3210240#adf3b4f1b0b746680d83bd3a8730e438d3210240"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -995,7 +995,7 @@ dependencies = [
 
 [[package]]
 name = "duckbridge-extension"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "duckbridge",

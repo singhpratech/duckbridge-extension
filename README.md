@@ -22,9 +22,10 @@ authentication is used by default for SQL Server (`DOMAIN\user`, `user@domain`, 
 ## Layout
 
 This repository follows DuckDB's [Rust extension template](https://github.com/duckdb/extension-template-rs)
-so the community-extensions CI can build it from source. `src/lib.rs` is a copy of
-`extension/src/lib.rs` in the main repository at the revision pinned in `Cargo.toml`
-(`scripts/sync-from-core.sh` refreshes it; CI fails if the two differ). The engine itself is the
+so the community-extensions CI can build it from source. `src/` is a copy of
+`extension/src/` in the main repository at the revision pinned in `Cargo.toml`
+(`scripts/sync-from-core.sh` refreshes it; CI fails if the two differ). Only the v1 backend
+(`duckdb_v1.rs`) is compiled here; `duckdb_neo.rs` is the native DuckDB 2.0 build of the main repository. The engine itself is the
 `duckbridge` crate pulled from that same revision.
 
 ## Build and test

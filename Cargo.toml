@@ -1,6 +1,6 @@
 [package]
 name = "duckbridge-extension"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "DuckBridge as a DuckDB extension: import SQL Server databases, run T-SQL on DuckDB, export back as a live load, a restorable .bak, PostgreSQL or Parquet"
 license = "MIT"
@@ -13,10 +13,15 @@ publish = false
 name = "duckbridge"
 crate-type = ["cdylib"]
 
+[lints.rust]
+# src/lib.rs selects src/duckdb_neo.rs under `neo`, a feature of the core repo's extension/neo/Cargo.toml
+# (the native DuckDB 2.0 build); this crate only builds the v1 backend.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("neo"))'] }
+
 [dependencies]
 duckdb = { version = "1.10506", default-features = false, features = ["loadable-extension", "vscalar", "chrono", "uuid", "serde_json"] }
-# The engine. src/lib.rs is a copy of extension/src/lib.rs at this same revision (scripts/sync-from-core.sh).
-duckbridge = { git = "https://github.com/singhpratech/duckbridge", rev = "c97cfcdaf3a1d2f00bd97e41b45283cabb70eb50", default-features = false }
+# The engine. src/*.rs is a copy of extension/src/*.rs at this same revision (scripts/sync-from-core.sh).
+duckbridge = { git = "https://github.com/singhpratech/duckbridge", rev = "adf3b4f1b0b746680d83bd3a8730e438d3210240", default-features = false, features = ["duckdb-v1"] }
 anyhow = "1"
 
 [profile.release]
